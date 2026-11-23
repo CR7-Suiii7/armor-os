@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ARMOR Security Engine: Admin Recovery & Incident Clearing Tool
+# ==============================================================================
+set -euo pipefail
+
+LOCKOUT_FLAG="/etc/armor/lockout.active"
+ADMIN_USER="armor"
+ADMIN_KEY_STORE="/etc/armor/admin"
+ADMIN_SIGNERS="${ADMIN_KEY_STORE}/admin_signers"
+NONCE_DIR="/run/armor/admin_challenge"
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "[ERROR] armor-admin-unlock must be executed as root." >&2
+    exit 1
+fi
+
+if [ ! -f "${LOCKOUT_FLAG}" ]; then
+    echo "[INFO] System is not in lockdown state."
+    exit 0
+fi
+
+echo "======================================================================"
+echo "          ARMOR EMERGENCY INCIDENT RECOVERY CONSOLE                  "
+echo "======================================================================"
+cat "${LOCKOUT_FLAG}"
+echo "----------------------------------------------------------------------"
+
+read -r -p "Enter path to Admin Hardware Token / Private Key: " ADMIN_PRIV_KEY
+
+if [ ! -f "${ADMIN_PRIV_KEY}" ] || [ ! -r "${ADMIN_PRIV_KEY}" ]; then
+    echo "[FAIL] Private key not found or not readable: ${ADMIN_PRIV_KEY}"
+    exit 1
+fi
+
+mkdir -p "${NONCE_DIR}"
+chmod 700 "${NONCE_DIR}"
+CHALLENGE_NONCE="${NONCE_DIR}/admin_$(date +%s%N).nonce"
+head -c 64 /dev/urandom | base64 > "${CHALLENGE_NONCE}"
+SIG_FILE="${CHALLENGE_NONCE}.sig"
+
+# Perform Admin cryptographic challenge
+echo "[+] Signing administrative challenge..."
+if ! ssh-keygen -Y sign -f "${ADMIN_PRIV_KEY}" -n "armor-admin-unlock" "${CHALLENGE_NONCE}" >/dev/null 2>&1; then
+    rm -rf "${NONCE_DIR}"
+    echo "[FAIL] Admin key cryptographic signing failed."
+    exit 1
+fi
+
+# Verify Admin signature against root-owned admin allowed signers
+if ! ssh-keygen -Y verify -f "${ADMIN_SIGNERS}" -I "${ADMIN_USER}" -n "armor-admin-unlock" -s "${SIG_FILE}" < "${CHALLENGE_NONCE}" >/dev/null 2>&1; then
+    rm -rf "${NONCE_DIR}"
+    echo "[CRITICAL FAIL] Admin identity verification failed! Invalid key."
+    /usr/local/bin/armor-hashlog "ADMIN_UNLOCK_FAILED" "Unauthorized unlock attempt using invalid key."
+    exit 1
+fi
+
+rm -rf "${NONCE_DIR}"
+echo "[SUCCESS] Admin authenticated successfully."
+
+# Clear Lockdown State
+rm -f "${LOCKOUT_FLAG}"
+
+# Restore Network Configuration via nftables
+echo "[+] Restoring default-deny nftables ruleset..."
+if [ -f "/etc/nftables.conf" ]; then
+    nft -f /etc/nftables.conf
+fi
+
+# Restart NetworkManager
+systemctl restart NetworkManager
+
+# Re-enable system display manager
+echo "[+] Re-enabling LightDM display manager..."
+systemctl start lightdm 2>/dev/null || true
+
+# Reset terminal banner
+echo "ARMOR Secure Enterprise OS 1.0 (Debian 12 Bookworm hardened)" > /etc/issue
+
+# Log restoration in tamper-evident log
+/usr/local/bin/armor-hashlog "SYSTEM_UNLOCKED" "Lockout cleared by admin '${ADMIN_USER}'."
+
+echo "======================================================================"
+echo "[+] System recovery completed. Incident cleared."
+echo "======================================================================"

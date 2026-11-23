@@ -1,0 +1,63 @@
+# ==============================================================================
+# ARMOR Plymouth Boot Script
+# Dynamically renders identity, token, integrity and access status
+# ==============================================================================
+
+# Background gradient / solid color
+Window.SetBackgroundTopColor(0.05, 0.07, 0.12);
+Window.SetBackgroundBottomColor(0.01, 0.02, 0.04);
+
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
+
+# Primary Header
+title_text = "ARMOR SECURE OS";
+title_image = Image.Text(title_text, 0.2, 0.8, 1.0, 1.0, "Sans Bold 28");
+title_sprite = Sprite(title_image);
+title_sprite.SetX((screen_width - title_image.GetWidth()) / 2);
+title_sprite.SetY(screen_height * 0.35);
+
+# Subtitle / Identity Verification Header
+sub_text = "COMPANY MANAGED HARDENED WORKSTATION";
+sub_image = Image.Text(sub_text, 0.6, 0.65, 0.75, 1.0, "Sans 12");
+sub_sprite = Sprite(sub_image);
+sub_sprite.SetX((screen_width - sub_image.GetWidth()) / 2);
+sub_sprite.SetY(screen_height * 0.42);
+
+# Status Line Sprite
+current_msg = "ARMOR – Verifying identity…";
+msg_image = Image.Text(current_msg, 0.9, 0.9, 0.95, 1.0, "Monospace 14");
+msg_sprite = Sprite(msg_image);
+msg_sprite.SetX((screen_width - msg_image.GetWidth()) / 2);
+msg_sprite.SetY(screen_height * 0.55);
+
+# Visual Verification Indicator Box
+box_width = 400;
+box_height = 8;
+box_x = (screen_width - box_width) / 2;
+box_y = screen_height * 0.50;
+
+fun update_message_callback(text) {
+    current_msg = text;
+    
+    # Color-code based on status text
+    r = 0.9; g = 0.9; b = 0.9;
+    if (text.substr(0, 11) == "ARMOR ERROR") {
+        r = 1.0; g = 0.3; b = 0.2;
+    } else if (text.substr(0, 12) == "ARMOR BREACH") {
+        r = 1.0; g = 0.1; b = 0.1;
+    } else if (text.substr(0, 24) == "ARMOR: Integrity verifie") {
+        r = 0.2; g = 0.95; b = 0.4;
+    }
+    
+    msg_image = Image.Text(current_msg, r, g, b, 1.0, "Monospace 14");
+    msg_sprite.SetImage(msg_image);
+    msg_sprite.SetX((screen_width - msg_image.GetWidth()) / 2);
+}
+
+fun update_status_callback(status) {
+    # Handles dynamic status progress updates
+}
+
+Plymouth.SetMessageFunction(update_message_callback);
+Plymouth.SetUpdateStatusFunction(update_status_callback);

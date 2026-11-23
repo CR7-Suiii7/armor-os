@@ -1,0 +1,16 @@
+# Large binary files & OS images
+*.iso
+*.vdi
+*.vhd
+*.vmdk
+
+# Private keys & secrets
+keys/
+*.key
+id_ed25519*
+token-staging/
+
+# Screenshots & temporary files
+screen.png
+*.log
+extracted_cmd.ps1

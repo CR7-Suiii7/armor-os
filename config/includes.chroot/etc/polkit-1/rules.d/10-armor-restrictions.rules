@@ -1,0 +1,25 @@
+// Block standard restricted users from mounting removable media, installing packages, or modifying system state
+polkit.addRule(function(action, subject) {
+    if (subject.isInGroup("armor-admin")) {
+        return polkit.Result.YES;
+    }
+
+    // Deny storage mounting
+    if (action.id.indexOf("org.freedesktop.udisks2.") === 0) {
+        return polkit.Result.NO;
+    }
+
+    // Deny package management / software install
+    if (action.id.indexOf("org.debian.apt.") === 0 ||
+        action.id.indexOf("org.freedesktop.packagekit.") === 0) {
+        return polkit.Result.NO;
+    }
+
+    // Deny system shutdown/restart from unprivileged desktop session without auth
+    if (action.id.indexOf("org.freedesktop.login1.power-off") === 0 ||
+        action.id.indexOf("org.freedesktop.login1.reboot") === 0) {
+        return polkit.Result.AUTH_ADMIN;
+    }
+
+    return polkit.Result.NOT_HANDLED;
+});

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=ARMOR Enterprise Secure Boot
+Description=Cryptographic boot validation splash for ARMOR OS
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/armor
+ScriptFile=/usr/share/plymouth/themes/armor/armor.script

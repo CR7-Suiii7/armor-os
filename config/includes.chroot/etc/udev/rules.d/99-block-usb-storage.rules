@@ -1,0 +1,2 @@
+# Disable USB Mass Storage entirely to prevent data exfiltration
+ACTION=="add", SUBSYSTEMS=="usb", ATTRS{bInterfaceClass}=="08", RUN+="/bin/sh -c 'echo 0 > /sys$DEVPATH/authorized'"

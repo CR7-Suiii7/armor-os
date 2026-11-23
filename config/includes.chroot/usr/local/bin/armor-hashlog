@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ARMOR Cryptographic Hash-Chained Tamper-Evident Logger
+# Implements Merkle-style sequential SHA-256 hash chaining on append
+# ==============================================================================
+set -euo pipefail
+
+EVENT_TYPE="${1:-INFO}"
+EVENT_MSG="${2:-}"
+LOG_DIR="/var/log/armor"
+LOG_FILE="${LOG_DIR}/incident.log"
+PREV_HASH_FILE="${LOG_DIR}/.last_hash"
+
+mkdir -p "${LOG_DIR}"
+chmod 700 "${LOG_DIR}"
+
+# Temporarily remove append-only immutable flag if set
+if [ -f "${LOG_FILE}" ]; then
+    chattr -a "${LOG_FILE}" 2>/dev/null || true
+fi
+
+PREV_HASH="0000000000000000000000000000000000000000000000000000000000000000"
+if [ -f "${PREV_HASH_FILE}" ]; then
+    PREV_HASH=$(cat "${PREV_HASH_FILE}")
+fi
+
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+PAYLOAD="${PREV_HASH}|${TIMESTAMP}|${EVENT_TYPE}|${EVENT_MSG}"
+CURRENT_HASH=$(echo -n "${PAYLOAD}" | sha256sum | awk '{print $1}')
+
+ENTRY="${TIMESTAMP} [${EVENT_TYPE}] HASH=${CURRENT_HASH} PREV=${PREV_HASH} MSG=\"${EVENT_MSG}\""
+echo "${ENTRY}" >> "${LOG_FILE}"
+echo "${CURRENT_HASH}" > "${PREV_HASH_FILE}"
+
+# Re-engage append-only flag to prevent tampering
+chattr +a "${LOG_FILE}" 2>/dev/null || true

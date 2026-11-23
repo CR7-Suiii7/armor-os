@@ -1,0 +1,56 @@
+#!/bin/sh
+# ==============================================================================
+# ARMOR Chroot Post-Installation Hardening Hook
+# Executes inside the chroot during 'lb build' to configure system security
+# ==============================================================================
+set -e
+
+echo "[ARMOR-HOOK] Initializing Post-Install Hardening..."
+
+# 1. Configure Plymouth Default Theme
+echo "[ARMOR-HOOK] Setting default Plymouth theme to armor..."
+if [ -d "/usr/share/plymouth/themes/armor" ]; then
+    plymouth-set-default-theme -R armor || true
+fi
+
+# 2. Setup ARMOR Security Directories and Base Admin Account
+mkdir -p /etc/armor/keys /etc/armor/admin /etc/armor/quarantine /var/log/armor /var/lib/armor/tpm_keys
+chmod 700 /etc/armor /var/log/armor /etc/armor/admin /var/lib/armor/tpm_keys
+chmod 755 /etc/armor/keys
+
+# Create Admin Group and 'armor' Administrative User
+groupadd -r armor-admin || true
+useradd -m -s /bin/bash -g armor-admin -G sudo,adm,systemd-journal armor || true
+passwd -l armor || true # Password locked; only key auth allowed
+
+# Configure Sudoers for Admin 'armor'
+cat << 'EOF' > /etc/sudoers.d/armor-admin
+%armor-admin ALL=(ALL:ALL) NOPASSWD: /usr/local/bin/armor-usermgmt, /usr/local/bin/armor-admin-unlock, /usr/sbin/nft, /usr/bin/aide
+EOF
+chmod 440 /etc/sudoers.d/armor-admin
+
+# 3. Restrict Terminal Emulators & Compilers for Non-Admin Users
+chmod 750 /usr/bin/x-terminal-emulator 2>/dev/null || true
+chmod 750 /usr/bin/xfce4-terminal 2>/dev/null || true
+chown root:armor-admin /usr/bin/xfce4-terminal /usr/bin/x-terminal-emulator 2>/dev/null || true
+
+# 4. Enable Critical Systemd Security Services
+systemctl enable nftables.service
+systemctl enable auditd.service
+systemctl enable apparmor.service
+systemctl enable armor-boot-validator.service
+systemctl enable unattended-upgrades.service
+
+# 5. Initialize AIDE Integrity Database
+echo "[ARMOR-HOOK] Initializing AIDE database..."
+if command -v aideinit >/dev/null 2>&1; then
+    aideinit -y -f || true
+    if [ -f "/var/lib/aide/aide.db.new" ]; then
+        mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+    fi
+fi
+
+# 6. Set Script Permissions
+chmod 755 /usr/local/bin/armor-*
+
+echo "[ARMOR-HOOK] Hardening Completed Successfully."

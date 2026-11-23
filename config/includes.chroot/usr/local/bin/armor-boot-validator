@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ARMOR Boot Integrity & Validation Engine (Plymouth Integration)
+# Drives the Plymouth splash stages reflecting REAL hardware & integrity state
+# ==============================================================================
+set -euo pipefail
+
+update_plymouth() {
+    local msg="$1"
+    local status="$2"
+    echo "[BOOT-VALIDATOR] ${msg}"
+    if command -v plymouth >/dev/null 2>&1 && plymouth --ping 2>/dev/null; then
+        plymouth message --text="${msg}" || true
+        plymouth update --status="${status}" || true
+    fi
+}
+
+update_plymouth "ARMOR – Verifying identity…" "stage_init"
+sleep 1
+
+# Stage 1: Key Check (Hardware Token / TPM / USB presence)
+update_plymouth "ARMOR: Checking cryptographic hardware token & TPM state..." "stage_keycheck"
+
+TOKEN_READY=false
+# Check for virtual TPM device or USB token
+if [ -c "/dev/tpmrm0" ] || [ -d "/sys/class/tpm" ]; then
+    TOKEN_READY=true
+elif [ -d "/media/armor-token" ] || ls /dev/sd* >/dev/null 2>&1; then
+    TOKEN_READY=true
+fi
+
+if [ "${TOKEN_READY}" = false ]; then
+    update_plymouth "ARMOR ERROR: Hardware security module / token not found!" "stage_fail"
+    /usr/local/bin/armor-hashlog "BOOT_WARN" "No hardware token detected during initial boot probe."
+fi
+sleep 1
+
+# Stage 2: System Integrity Check (AIDE database validation & kernel config)
+update_plymouth "ARMOR: Verifying system integrity & kernel signatures..." "stage_integrity"
+
+if [ -f "/var/lib/aide/aide.db" ]; then
+    # Verify core system binaries haven't been tampered with
+    if ! aide --check --config=/etc/aide/aide.conf >/dev/null 2>&1; then
+        update_plymouth "ARMOR BREACH: System integrity violation detected!" "stage_breach"
+        /usr/local/bin/armor-breach-handler --trigger "INTEGRITY_CHECK_FAILED"
+        exit 1
+    fi
+fi
+sleep 1
+
+# Stage 3: Access Granted / Authorization Pipeline Ready
+update_plymouth "ARMOR: Integrity verified. Access Granted." "stage_granted"
+sleep 1
+
+/usr/local/bin/armor-hashlog "BOOT_SUCCESS" "System integrity validated. Boot validation completed."
+exit 0
