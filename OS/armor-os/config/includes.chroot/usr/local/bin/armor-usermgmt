@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ARMOR User Management Utility (Admin Only)
+# Manages standard users with restricted office environments & SSH key enrollment
+# ==============================================================================
+set -euo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "[ERROR] armor-usermgmt must be run as root or via sudo." >&2
+    exit 1
+fi
+
+KEY_STORE="/etc/armor/keys"
+SIGNERS_FILE="${KEY_STORE}/allowed_signers"
+mkdir -p "${KEY_STORE}"
+touch "${SIGNERS_FILE}"
+chmod 755 "${KEY_STORE}"
+chmod 644 "${SIGNERS_FILE}"
+
+usage() {
+    echo "Usage: armor-usermgmt [COMMAND] [ARGS...]"
+    echo "Commands:"
+    echo "  create-user <username> <path_to_public_key>   Create restricted office user"
+    echo "  revoke-user <username>                        Revoke key and deactivate user"
+    echo "  list-users                                    List registered users and keys"
+    echo "  rotate-key  <username> <path_to_new_pubkey>   Rotate user public key"
+    exit 1
+}
+
+COMMAND="${1:-}"
+
+case "${COMMAND}" in
+    create-user)
+        USERNAME="${2:-}"
+        PUBKEY_PATH="${3:-}"
+        if [ -z "${USERNAME}" ] || [ -z "${PUBKEY_PATH}" ]; then
+            usage
+        fi
+        if id "${USERNAME}" >/dev/null 2>&1; then
+            echo "[!] User ${USERNAME} already exists."
+        else
+            echo "[+] Creating restricted user account: ${USERNAME}"
+            # Standard restricted office users receive restricted bash or custom launcher shell
+            useradd -m -s /bin/rbash -G cdrom,audio,video "${USERNAME}"
+            # Lock password so no password logins are possible
+            passwd -l "${USERNAME}" >/dev/null
+        fi
+
+        # Setup sandbox downloads directory
+        mkdir -p "/home/${USERNAME}/Downloads/sandboxed"
+        chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}/Downloads"
+        chmod 700 "/home/${USERNAME}/Downloads/sandboxed"
+
+        # Enroll public key into root-owned allowed_signers
+        PUBKEY_CONTENT=$(cat "${PUBKEY_PATH}")
+        # Remove any existing entry for this user
+        sed -i "/^${USERNAME} /d" "${SIGNERS_FILE}"
+        echo "${USERNAME} ${PUBKEY_CONTENT}" >> "${SIGNERS_FILE}"
+        echo "[+] User ${USERNAME} enrolled with public key in ${SIGNERS_FILE}."
+        /usr/local/bin/armor-hashlog "USER_CREATED" "Restricted user ${USERNAME} enrolled."
+        ;;
+
+    revoke-user)
+        USERNAME="${2:-}"
+        [ -z "${USERNAME}" ] && usage
+        sed -i "/^${USERNAME} /d" "${SIGNERS_FILE}"
+        passwd -l "${USERNAME}" 2>/dev/null || true
+        loginctl terminate-user "${USERNAME}" 2>/dev/null || true
+        echo "[+] User ${USERNAME} revoked."
+        /usr/local/bin/armor-hashlog "USER_REVOKED" "Key revoked for user ${USERNAME}."
+        ;;
+
+    rotate-key)
+        USERNAME="${2:-}"
+        PUBKEY_PATH="${3:-}"
+        [ -z "${USERNAME}" ] || [ -z "${PUBKEY_PATH}" ] && usage
+        PUBKEY_CONTENT=$(cat "${PUBKEY_PATH}")
+        sed -i "/^${USERNAME} /d" "${SIGNERS_FILE}"
+        echo "${USERNAME} ${PUBKEY_CONTENT}" >> "${SIGNERS_FILE}"
+        echo "[+] Public key rotated for user ${USERNAME}."
+        /usr/local/bin/armor-hashlog "KEY_ROTATED" "Public key rotated for user ${USERNAME}."
+        ;;
+
+    list-users)
+        echo "=== ARMOR Registered Key Users ==="
+        cat "${SIGNERS_FILE}"
+        ;;
+
+    *)
+        usage
+        ;;
+esac

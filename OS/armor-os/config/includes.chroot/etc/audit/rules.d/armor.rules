@@ -1,0 +1,34 @@
+# ------------------------------------------------------------------------------
+# ARMOR OS Auditd Hardening Rules
+# ------------------------------------------------------------------------------
+
+# Remove any existing rules
+-D
+
+# Buffer size & failure policy (1=printk, 2=panic)
+-b 8192
+-f 1
+
+# Monitor ARMOR security directory & public key stores
+-w /etc/armor/ -p wa -k armor_config_tamper
+-w /etc/armor/keys/ -p wa -k armor_keystore_tamper
+-w /etc/sudoers -p wa -k sudoers_tamper
+-w /etc/sudoers.d/ -p wa -k sudoers_tamper
+-w /etc/pam.d/ -p wa -k pam_tamper
+-w /etc/shadow -p rwa -k shadow_tamper
+-w /etc/passwd -p wa -k passwd_tamper
+
+# Monitor privilege escalation execution
+-a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k priv_escalation
+-a always,exit -F arch=b32 -S execve -C uid!=euid -F euid=0 -k priv_escalation
+
+# Monitor unauthorized access to raw disk or memory
+-w /dev/mem -p rwa -k raw_memory_access
+-w /dev/kmem -p rwa -k raw_memory_access
+
+# Monitor AppArmor modifications
+-w /etc/apparmor/ -p wa -k apparmor_tamper
+-w /etc/apparmor.d/ -p wa -k apparmor_tamper
+
+# Make rules immutable until reboot
+-e 2

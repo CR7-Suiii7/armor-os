@@ -1,0 +1,53 @@
+# Core Desktop & Window Manager (Lightweight, lockdown-friendly)
+xfce4
+xfce4-goodies
+lightdm
+lightdm-gtk-greeter
+
+# Security & Kernel Hardening
+apparmor
+apparmor-profiles
+apparmor-utils
+nftables
+auditd
+audispd-plugins
+aide
+aide-common
+unattended-upgrades
+needrestart
+cryptsetup
+cryptsetup-bin
+libpam-ssh-agent-auth
+tpm2-tools
+libpam-modules
+openssh-client
+sudo
+
+# Restrictive Office Environment Applications
+firefox-esr
+libreoffice-writer
+libreoffice-calc
+libreoffice-impress
+thunderbird
+
+# Hardware, Audio, Networking & VirtualBox Guest Additions
+network-manager
+network-manager-gnome
+pipewire
+pipewire-audio-client-libraries
+pipewire-pulse
+wireplumber
+virtualbox-guest-x11
+virtualbox-guest-utils
+
+# Boot Theming & Display
+plymouth
+plymouth-themes
+plymouth-x11
+
+# Utility & Verification Tools
+jq
+curl
+ca-certificates
+acl
+inotify-tools

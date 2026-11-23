@@ -1,0 +1,55 @@
+# AppArmor Profile for Standard Restricted Office Users in ARMOR OS
+# Enforces strict isolation: Allows Office Suite + Hardened Browser only.
+# Denies execution of terminals, compilers, package managers, and raw network sockets.
+
+abi <abi/3.0>,
+
+include <tunables/global>
+
+profile armor-restricted-user /** flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/fonts>
+  include <abstractions/X>
+  include <abstractions/freedesktop.org>
+  include <abstractions/audio>
+
+  # Permitted Executables (Office, Mail, Browser)
+  /usr/lib/firefox-esr/firefox-esr Px,
+  /usr/lib/libreoffice/program/soffice.bin Px,
+  /usr/lib/thunderbird/thunderbird Px,
+  /usr/bin/xfce4-session rix,
+  /usr/bin/xfwm4 rix,
+  /usr/bin/xfdesktop rix,
+  /usr/bin/xfce4-panel rix,
+
+  # Deny all terminals and interactive shells explicitly
+  deny /usr/bin/*terminal* x,
+  deny /usr/bin/xterm x,
+  deny /usr/bin/rxvt* x,
+  deny /usr/bin/bash x,
+  deny /usr/bin/dash x,
+  deny /usr/bin/sh x,
+  deny /usr/bin/zsh x,
+  deny /usr/bin/sudo x,
+  deny /usr/bin/su x,
+  deny /usr/bin/apt* x,
+  deny /usr/bin/dpkg* x,
+
+  # File Access: Home Directory restricted
+  owner /home/*/.config/** rw,
+  owner /home/*/.local/** rw,
+  owner /home/*/.cache/** rw,
+  owner /home/*/Documents/** rw,
+  owner /home/*/Downloads/sandboxed/** rw,
+  
+  # Deny arbitrary execution from /tmp or /home
+  deny /tmp/** x,
+  deny /var/tmp/** x,
+  deny /home/** x,
+
+  # Deny access to sensitive system paths
+  deny /etc/armor/** rwklx,
+  deny /etc/shadow r,
+  deny /etc/sudoers* r,
+  deny /var/log/** r,
+}

@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# ARMOR Security Engine: Incident Response & Emergency Lockdown Daemon
+# ==============================================================================
+set -euo pipefail
+
+TRIGGER_TYPE=""
+AFFECTED_USER=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --trigger)
+            TRIGGER_TYPE="$2"
+            shift 2
+            ;;
+        --user)
+            AFFECTED_USER="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+TRIGGER_TYPE="${TRIGGER_TYPE:-UNKNOWN_SECURITY_ANOMALY}"
+INCIDENT_ID="ARMOR-SEC-$(cat /proc/sys/kernel/random/uuid | cut -c 1-8 | tr '[:lower:]' '[:upper:]')"
+LOCKOUT_FLAG="/etc/armor/lockout.active"
+QUARANTINE_DIR="/etc/armor/quarantine"
+LOG_FILE="/var/log/armor/incident.log"
+
+mkdir -p /etc/armor "${QUARANTINE_DIR}" /var/log/armor
+chmod 700 /etc/armor "${QUARANTINE_DIR}"
+
+echo "[!] ARMOR INCIDENT RESPONSE ACTIVATED: ${TRIGGER_TYPE} [${INCIDENT_ID}]"
+
+# Step a: Revoke and rotate the affected user's key immediately
+if [ -n "${AFFECTED_USER}" ]; then
+    echo "[+] Revoking public key for user ${AFFECTED_USER}..."
+    if [ -f "/etc/armor/keys/allowed_signers" ]; then
+        # Extract revoked key into quarantine
+        grep "^${AFFECTED_USER} " /etc/armor/keys/allowed_signers >> "${QUARANTINE_DIR}/revoked_${INCIDENT_ID}.keys" || true
+        # Remove from active authorized signers
+        sed -i "/^${AFFECTED_USER} /d" /etc/armor/keys/allowed_signers
+    fi
+    # Revoke SSH keys
+    rm -f "/home/${AFFECTED_USER}/.ssh/authorized_keys" 2>/dev/null || true
+fi
+
+# Step b: Lock the system
+# 1. Write Lockout state with Incident metadata
+cat <<EOF > "${LOCKOUT_FLAG}"
+INCIDENT_ID=${INCIDENT_ID}
+TRIGGER=${TRIGGER_TYPE}
+AFFECTED_USER=${AFFECTED_USER}
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+STATUS=LOCKED
+EOF
+
+# 2. Terminate all active user sessions immediately
+echo "[+] Terminating user sessions..."
+for u in $(who | awk '{print $1}' | sort -u); do
+    if [ "$u" != "root" ]; then
+        loginctl terminate-user "$u" 2>/dev/null || true
+        pkill -KILL -u "$u" 2>/dev/null || true
+    fi
+done
+
+# 3. Stop Display Manager (LightDM) to tear down desktop graphical sessions
+systemctl stop lightdm 2>/dev/null || true
+
+# 4. Emergency Network Killswitch via nftables
+echo "[+] Engaging emergency network isolation..."
+nft flush ruleset
+nft add table inet lockdown
+nft add chain inet lockdown filter '{ type filter hook input priority -100; policy drop; }'
+nft add chain inet lockdown forward '{ type filter hook forward priority -100; policy drop; }'
+nft add chain inet lockdown output '{ type filter hook output priority -100; policy drop; }'
+nft add rule inet lockdown filter iifname "lo" accept
+nft add rule inet lockdown output oifname "lo" accept
+
+# 5. Disable standard console logins
+systemctl stop getty@tty2.service getty@tty3.service getty@tty4.service getty@tty5.service getty@tty6.service 2>/dev/null || true
+
+# 6. Render Incident Lock Screen on Primary TTY / Framebuffer
+cat << 'BANNER' > /etc/issue
+********************************************************************************
+*                                                                              *
+*                         [ ARMOR SECURITY LOCKDOWN ]                          *
+*                                                                              *
+* A critical security event triggered immediate defensive lockdown.            *
+* Network isolation active. User keys revoked. Desktop sessions terminated.    *
+*                                                                              *
+********************************************************************************
+BANNER
+echo "Incident ID : ${INCIDENT_ID}" >> /etc/issue
+echo "Trigger     : ${TRIGGER_TYPE}" >> /etc/issue
+echo "Timestamp   : $(date -u)" >> /etc/issue
+echo "Recovery    : Admin authentication required via local console." >> /etc/issue
+echo "--------------------------------------------------------------------------------" >> /etc/issue
+
+# Step d: Write everything to tamper-evident cryptographic hash log
+/usr/local/bin/armor-hashlog "SECURITY_BREACH_LOCKDOWN" "Trigger: ${TRIGGER_TYPE} | User: ${AFFECTED_USER} | ID: ${INCIDENT_ID}"
+
+echo "[!] System locked. Enter recovery mode or invoke armor-admin-unlock with admin token on TTY1."

@@ -1,0 +1,42 @@
+{
+  "policies": {
+    "DisablePrivateBrowsing": true,
+    "DisablePasswordManager": true,
+    "PromptForDownloadLocation": false,
+    "DefaultDownloadDirectory": "${home}/Downloads/sandboxed",
+    "SanitizeOnShutdown": {
+      "Cache": true,
+      "Cookies": false,
+      "History": false,
+      "Sessions": true
+    },
+    "ExtensionSettings": {
+      "*": {
+        "installation_mode": "blocked"
+      },
+      "uBlock0@raymondhill.net": {
+        "installation_mode": "force_installed",
+        "install_url": "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+      }
+    },
+    "WebsiteFilter": {
+      "Block": [
+        "*"
+      ],
+      "Allow": [
+        "https://*.internal.company.com/*",
+        "https://*.workplace.com/*",
+        "https://*.google.com/*",
+        "https://*.microsoft.com/*",
+        "https://*.github.com/*",
+        "https://*.debian.org/*"
+      ],
+      "Exceptions": []
+    },
+    "CaptivePortal": false,
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": ""
+  }
+}
